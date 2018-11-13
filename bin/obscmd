@@ -1,0 +1,24 @@
+#!/usr/bin/env python
+# -*- coding: UTF-8 -*-
+import sys
+import os
+
+if os.environ.get('LC_CTYPE', '') == 'UTF-8':
+    os.environ['LC_CTYPE'] = 'en_US.UTF-8'
+import obscmd.clidriver
+
+
+def main():
+    return obscmd.clidriver.main()
+
+
+if __name__ == '__main__':
+    # cmd = 'obscmd obs cp c:\\新建文件夹\中文测试.txt obs://tsdd --partsize 3M'
+    # cmd = 'obscmd obs cp obs://obscmd-huadong/新建文件夹 . --recursive --md5'
+    # cmd = 'obscmd obs cp obs://obscmd-huadong/新建文件夹 obs://test-huadong --recursive --md5'
+    # cmd = 'obscmd obs ls --recursive'
+    # cmd = 'obscmd obs cp 新建文件夹 obs://obscmd-huadong --recursive --md5'
+    # cmd = 'obscmd obs cp 新建文件夹/test.txt obs://obscmd-huadong --md5'
+    # cmd = 'obscmd obs cp 新建文件夹/test.txt obs://obscmd-huadong --md5'
+    # sys.argv = cmd.strip().split(' ')
+    sys.exit(main())

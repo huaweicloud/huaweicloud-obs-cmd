@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+# Don't run tests from the root repo dir.
+# We want to ensure we're importing from the installed
+# binary package not from the CWD.
+
+import os
+from subprocess import check_call, PIPE
+
+import time
+
+from obscmd.cmds.obs.obsutil import ObsCmdUtil, create_client_with_default_config, join_bucket_key
+from obscmd.config import TEST_BUCKET
+from obscmd.utils import unitstr_to_bytes, bytes_to_unitstr, random_string
+from obscmd.testutils import FileCreator
+
+_dname = os.path.dirname
+
+REPO_ROOT = _dname(_dname(_dname(os.path.abspath(__file__))))
+os.chdir(os.path.join(REPO_ROOT, 'tests'))
+
+
+def run(command):
+    return check_call(command, shell=True)
+
+
+# run('nosetests --with-xunit --cover-erase --with-coverage '
+#     '--cover-package obscmd --cover-xml -v performance --processes=1')
+
+
+def run_cmd_for_count_time(cmd):
+    start_time = time.time()
+    run(cmd)
+    end_time = time.time()
+    return end_time - start_time
+
+
+def print_run_time(size, seconds, tasknum, partsize, cmd):
+    total = unitstr_to_bytes(size)
+    flowspeed = bytes_to_unitstr(total / seconds)
+    msg = "%s/s\t%d\t%s\t'%s'" % (flowspeed, tasknum, partsize, cmd)
+    print(msg)
+
+
+if __name__ == '__main__':
+    fc = FileCreator()
+    client = create_client_with_default_config()
+    # bucket = ObsCmdUtil(client).create_bucket(random_string(8).lower(), location='cn-east-2')
+    # fullbucket = join_bucket_key(bucket)
+    bucket = TEST_BUCKET
+    if not ObsCmdUtil(client).head_bucket(TEST_BUCKET):
+        bucket = ObsCmdUtil(client).create_bucket(TEST_BUCKET, location='cn-east-2')
+        time.sleep(20)
+    fullbucket = join_bucket_key(bucket)
+
+    # filesizes = ['10M', '50M', '100M', '500M', '1G', '10G']
+    filesizes = ['1M']
+    filenames = ['file' + size for size in filesizes]
+    files_dir = fc.create_dir('tests', len(filesizes), filenames, filesizes)
+
+    partsizes = ['50M', '100M', '500M', '1G']
+    partsizes = ['50M', ]
+    tasknums = [4, 8, 16]
+
+    for file in filenames:
+        for partsize in partsizes:
+            for tasknum in tasknums:
+                cmd = 'obscmd obs cp %s %s --tasknum %d --partsize %s' % (
+                    os.path.join(files_dir, file), fullbucket, tasknum, partsize)
+                seconds = run_cmd_for_count_time(cmd)
+                print_run_time(file.replace('file', ''), seconds, tasknum, partsize, cmd)
+
+    # clear bucket and local temp files
+    ObsCmdUtil(client).clear_bucket(bucket)
+    fc.remove_all()

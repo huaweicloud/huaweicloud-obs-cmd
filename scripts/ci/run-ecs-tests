@@ -1,0 +1,83 @@
+#!/usr/bin/env python
+# Don't run tests from the root repo dir.
+# We want to ensure we're importing from the installed
+# binary package not from the CWD.
+
+import os
+from subprocess import check_call
+import time
+from obscmd.cmds.obs.obsutil import ObsCmdUtil, create_client_with_default_config, join_bucket_key
+from obscmd.config import TEST_BUCKET
+from obscmd.utils import unitstr_to_bytes, bytes_to_unitstr, random_string
+from obscmd.testutils import FileCreator
+
+
+filesizes = ['100K', '1M']
+partsizes = ['50M', '100M', '500M', '1G']
+tasknums = [4, 8, 16]
+filenames = ['file'+size for size in filesizes]
+
+def run(command):
+    return check_call(command, shell=True)
+
+
+def run_cmd_for_count_time(cmd):
+    start_time = time.time()
+    run(cmd)
+    end_time = time.time()
+    return end_time - start_time
+
+
+def print_run_time(size, seconds, tasknum, partsize, cmd):
+    total = unitstr_to_bytes(size)
+    flowspeed = bytes_to_unitstr(total/seconds)
+    msg = "%s/s\t%s\t%d\t%s\t'%s'" % (flowspeed, size, tasknum, partsize, cmd)
+    print(msg)
+    return msg
+
+if __name__ == '__main__':
+    upload_ret_list = []
+    download_ret_list = []
+    fc = FileCreator()
+    client = create_client_with_default_config()
+    bucket = TEST_BUCKET
+    if not ObsCmdUtil(client).head_bucket(TEST_BUCKET):
+        bucket = ObsCmdUtil(client).create_bucket(TEST_BUCKET, location='cn-east-2')
+        time.sleep(20)
+    fullbucket = join_bucket_key(bucket)
+
+    # filesizes = ['10M', '50M', '100M', '500M', '1G', '10G']
+    files_dir = fc.create_dir('tests', len(filesizes), filenames, filesizes)
+
+    print('\n--------------------- test upload bigfile on ecs -------------------------\n')
+    for file in filenames:
+        for partsize in partsizes:
+            for tasknum in tasknums:
+                filesize = file.replace('file', '')
+                cmd = 'obscmd obs cp %s %s --tasknum %d --partsize %s' % (os.path.join(files_dir, file), fullbucket, tasknum, partsize)
+                seconds = run_cmd_for_count_time(cmd)
+                msg = print_run_time(filesize, seconds, tasknum, partsize, cmd)
+                upload_ret_list.append(msg)
+
+    print('\n--------------------- test download bigfile on ecs -------------------------\n')
+    tmp_dir = fc.create_dir('tmp')
+    for file in filenames:
+        for partsize in partsizes:
+            for tasknum in tasknums:
+                filesize = file.replace('file', '')
+                cmd = 'obscmd obs cp %s %s --tasknum %d --partsize %s' % (
+                        join_bucket_key(bucket, file), tmp_dir, tasknum, partsize)
+                seconds = run_cmd_for_count_time(cmd)
+                msg = print_run_time(filesize, seconds, tasknum, partsize, cmd)
+                download_ret_list.append(msg)
+
+    # write to file
+    with open('upload_results.bat', 'w') as fp:
+        fp.write('\n'.join(upload_ret_list))
+    with open('download_results.bat', 'w') as fp:
+        fp.write('\n'.join(download_ret_list))
+
+
+    # clear bucket and local temp files
+    ObsCmdUtil(client).force_remove_bucket(bucket)
+    fc.remove_all()
